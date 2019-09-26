@@ -1,12 +1,22 @@
-import { login, logout, getInfo } from '@/api/user'
-import { getToken, setToken, removeToken } from '@/utils/auth'
+import { login, logout, getInfo, auth, getProfile } from '@/api/user'
+import {
+  getToken,
+  setToken,
+  removeToken,
+  getRefreshToken,
+  setRefreshToken,
+  // removeRefreshToken,
+  getExpiresInToken,
+  setExpiresInToken
+} from '@/utils/auth'
 import router, { resetRouter } from '@/router'
+import _ from 'lodash'
 
 const state = {
   token: getToken(),
-  name: '',
-  avatar: '',
-  introduction: '',
+  refreshToken: getRefreshToken(),
+  expiresInToken: getExpiresInToken(),
+  user: {},
   roles: []
 }
 
@@ -14,14 +24,14 @@ const mutations = {
   SET_TOKEN: (state, token) => {
     state.token = token
   },
-  SET_INTRODUCTION: (state, introduction) => {
-    state.introduction = introduction
+  SET_REFRESH_TOKEN: (state, token) => {
+    state.refreshToken = token
   },
-  SET_NAME: (state, name) => {
-    state.name = name
+  SET_EXPIRES_IN_TOKEN: (state, value) => {
+    state.expiresInToken = value
   },
-  SET_AVATAR: (state, avatar) => {
-    state.avatar = avatar
+  SET_USER: (state, user) => {
+    state.user = user
   },
   SET_ROLES: (state, roles) => {
     state.roles = roles
@@ -29,6 +39,28 @@ const mutations = {
 }
 
 const actions = {
+  // user auth Laravel Passport
+  auth({ commit, dispatch }, userInfo) {
+    const { username, password } = userInfo
+    return new Promise((resolve, reject) => {
+      auth({ username: username.trim(), password: password }).then(response => {
+        // const { data } = response
+        // console.log(response)
+        commit('SET_TOKEN', response.access_token)
+        commit('SET_REFRESH_TOKEN', response.refresh_token)
+        commit('SET_EXPIRES_IN_TOKEN', response.expires_in)
+        setToken(response.access_token)
+        setRefreshToken(response.refresh_token)
+        setExpiresInToken(response.expires_in)
+        // dispatch('getProfile')
+        resolve()
+      }).catch(error => {
+        // console.log(error)
+        reject(error)
+      })
+    })
+  },
+
   // user login
   login({ commit }, userInfo) {
     const { username, password } = userInfo
@@ -38,6 +70,26 @@ const actions = {
         commit('SET_TOKEN', data.token)
         setToken(data.token)
         resolve()
+      }).catch(error => {
+        reject(error)
+      })
+    })
+  },
+
+  // get user info
+  getProfile({ commit, state }) {
+    return new Promise((resolve, reject) => {
+      getProfile(state.token).then(response => {
+        const data = response.data
+        const roles = _.map(_.filter(response.included, ['type', 'roles']), 'attributes.name')
+
+        if (!data) {
+          reject('Verification failed, please Login again.')
+        }
+
+        commit('SET_USER', data)
+        commit('SET_ROLES', roles)
+        resolve(roles)
       }).catch(error => {
         reject(error)
       })
